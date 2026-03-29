@@ -1,245 +1,322 @@
-// X (Twitter) 批量取关非蓝勾且60天未发推用户脚本
-// 只取关没有认证标记且60天未发推的用户
+// X (Twitter) 批量取关脚本 - 调试修复版
+// 修复了页面加载和选择器问题
 
 (async function() {
     'use strict';
     
-    console.log('=== X 批量取关脚本启动 ===');
-    console.log('⚠️ 请确保您在 "正在关注" 页面');
-    console.log('ℹ️ 本脚本只会取关：非蓝勾 + 60天未发推 的用户\n');
+    console.log('=== X 批量取关脚本启动（调试版）===');
+    console.log('⚠️ 请确保您在 https://twitter.com/following');
+    console.log('');
 
     // 配置参数
     const CONFIG = {
-        maxUnfollow: 800,           // 最大取关数量
+        maxUnfollow: 100,           // 最大取关数量（先调低测试）
         inactiveDays: 60,           // 多少天未发推算不活跃
-        delayMin: 2000,             // 最小延迟时间（毫秒）
-        delayMax: 4000,             // 最大延迟时间（毫秒）
-        scrollDelay: 1500,          // 滚动延迟时间
-        checkInterval: 100          // 检查间隔
+        delayMin: 3000,             // 最小延迟（增加到3秒）
+        delayMax: 5000,             // 最大延迟（增加到5秒）
+        scrollDelay: 2000,          // 滚动延迟（增加到2秒）
+        maxScrolls: 10              // 最大滚动次数
     };
 
     let stats = {
-        unfollowed: 0,              // 已取关
-        skippedBlue: 0,             // 跳过蓝勾
-        skippedActive: 0,           // 跳过活跃用户
-        failed: 0,                  // 失败
-        total: 0                    // 总计处理
+        unfollowed: 0,
+        skippedBlue: 0,
+        skippedActive: 0,
+        failed: 0,
+        total: 0,
+        noButton: 0
     };
 
-    // 随机延迟函数
+    // 随机延迟
     function randomDelay(min, max) {
         const delay = Math.floor(Math.random() * (max - min + 1)) + min;
         return new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    // 滚动到页面底部加载更多
+    // 滚动加载更多（修复版）
     async function scrollToLoadMore() {
+        console.log('📜 滚动加载更多用户...');
+        
+        // 记录当前用户数量
+        const beforeCount = document.querySelectorAll('[data-testid="UserCell"]').length;
+        
+        // 多种滚动方式
         window.scrollTo(0, document.body.scrollHeight);
-        await randomDelay(CONFIG.scrollDelay, CONFIG.scrollDelay + 500);
+        await randomDelay(CONFIG.scrollDelay, CONFIG.scrollDelay + 1000);
+        
+        // 再次滚动确保加载
+        window.scrollBy(0, 500);
+        await randomDelay(1000, 1500);
+        
+        const afterCount = document.querySelectorAll('[data-testid="UserCell"]').length;
+        console.log(`   滚动前: ${beforeCount} 人, 滚动后: ${afterCount} 人`);
+        
+        return afterCount > beforeCount;
     }
 
-    // 检查用户是否有蓝勾认证
+    // 检查蓝勾（多种方式）
     function hasVerifiedBadge(userCell) {
-        // 查找认证图标（多种选择器兼容）
-        const verifiedIcon = userCell.querySelector('[data-testid="icon-verified"]') || 
-                             userCell.querySelector('svg[aria-label*="Verified"]') || 
-                             userCell.querySelector('[aria-label*="已认证"]') ||
-                             userCell.querySelector('svg[aria-label*="认证"]');
-        return verifiedIcon !== null;
+        // 方式1: data-testid
+        if (userCell.querySelector('[data-testid="icon-verified"]')) return true;
+        
+        // 方式2: aria-label 包含 Verified
+        const verifiedSvg = userCell.querySelector('svg[aria-label*="Verified"]');
+        if (verifiedSvg) return true;
+        
+        // 方式3: 检查蓝色勾选图标的路径
+        const svgs = userCell.querySelectorAll('svg');
+        for (let svg of svgs) {
+            const path = svg.querySelector('path');
+            if (path && path.getAttribute('d') && path.getAttribute('d').includes('M22.25')) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
-    // 获取用户名
+    // 获取用户名（修复版）
     function getUsername(userCell) {
-        const usernameElement = userCell.querySelector('a[href^="/"]') || 
-                               userCell.querySelector('[dir="ltr"]');
-        if (usernameElement) {
-            const text = usernameElement.textContent || '';
-            return text.replace('@', '').trim();
+        // 方式1: 从链接获取
+        const link = userCell.querySelector('a[href^="/"]');
+        if (link) {
+            const href = link.getAttribute('href');
+            const match = href.match(/\/([^\/]+)/);
+            if (match) return match[1];
         }
-        return '未知用户';
+        
+        // 方式2: 从文本获取
+        const textElement = userCell.querySelector('[dir="ltr"]');
+        if (textElement) {
+            const text = textElement.textContent.trim();
+            if (text.startsWith('@')) return text.substring(1);
+            return text;
+        }
+        
+        return 'unknown';
     }
 
-    // 获取用户最后发推时间（通过访问用户主页）
-    async function getLastTweetDate(username) {
+    // 检查活跃度（修复版）
+    async function checkActivity(userCell, username) {
         try {
-            // 创建临时 iframe 或打开新标签获取（简化版：通过 API 或页面元素）
-            // 实际实现：这里需要通过 fetch 或其他方式获取
-            // 简化方案：检查用户卡片中是否有最近推文时间
-            
-            // 注意：由于跨域限制，这里使用模拟方式
-            // 真实实现需要更复杂的逻辑
-            
-            return null; // 暂时返回 null，表示无法获取
-        } catch (error) {
-            return null;
-        }
-    }
-
-    // 检查用户是否60天未发推（基于页面信息）
-    async function isInactive(userCell, username) {
-        try {
-            // 方法1：查找推文时间元素
+            // 查找时间元素
             const timeElement = userCell.querySelector('time');
             if (timeElement) {
-                const dateStr = timeElement.getAttribute('datetime');
-                if (dateStr) {
-                    const tweetDate = new Date(dateStr);
+                const datetime = timeElement.getAttribute('datetime');
+                if (datetime) {
+                    const tweetDate = new Date(datetime);
                     const now = new Date();
                     const daysDiff = Math.floor((now - tweetDate) / (1000 * 60 * 60 * 24));
                     
-                    if (daysDiff > CONFIG.inactiveDays) {
-                        return { inactive: true, days: daysDiff };
-                    } else {
-                        return { inactive: false, days: daysDiff };
+                    return {
+                        hasTweet: true,
+                        days: daysDiff,
+                        inactive: daysDiff > CONFIG.inactiveDays
+                    };
+                }
+            }
+            
+            // 没有时间元素 = 从未发推或无法获取
+            return {
+                hasTweet: false,
+                days: null,
+                inactive: true  // 保守策略：视为不活跃
+            };
+            
+        } catch (e) {
+            console.log(`⚠️ 检查 @${username} 失败: ${e.message}`);
+            return { hasTweet: false, days: null, inactive: false, error: true };
+        }
+    }
+
+    // 查找取关按钮（修复版 - 多种选择器）
+    function findUnfollowButton(userCell) {
+        // 方式1: data-testid
+        let btn = userCell.querySelector('[data-testid="unfollow"]');
+        if (btn) return btn;
+        
+        // 方式2: 包含 "Following" 文本的按钮
+        const buttons = userCell.querySelectorAll('div[role="button"]');
+        for (let button of buttons) {
+            const text = button.textContent || '';
+            if (text.includes('Following') || text.includes('正在关注')) {
+                return button;
+            }
+        }
+        
+        // 方式3: 检查 aria-label
+        const allButtons = userCell.querySelectorAll('[role="button"]');
+        for (let btn of allButtons) {
+            const label = btn.getAttribute('aria-label') || '';
+            if (label.includes('Following') || label.includes('Unfollow')) {
+                return btn;
+            }
+        }
+        
+        return null;
+    }
+
+    // 执行取关（修复版）
+    async function unfollowUser(button, username, days) {
+        try {
+            // 点击取关按钮
+            button.click();
+            await randomDelay(800, 1200);
+            
+            // 查找确认按钮（多种方式）
+            let confirmBtn = document.querySelector('[data-testid="confirmationSheetConfirm"]') ||
+                            document.querySelector('[data-testid="unfollowConfirm"]') ||
+                            document.querySelector('div[role="button"][data-testid*="confirm"]');
+            
+            // 如果找不到特定按钮，找包含 "Unfollow" 文本的按钮
+            if (!confirmBtn) {
+                const buttons = document.querySelectorAll('div[role="button"]');
+                for (let btn of buttons) {
+                    const text = btn.textContent || '';
+                    if (text.includes('Unfollow') || text.includes('取消关注')) {
+                        confirmBtn = btn;
+                        break;
                     }
                 }
             }
             
-            // 方法2：如果没有时间元素，假设是活跃用户（保守策略）
-            // 或者可以标记为需要进一步检查
-            return { inactive: false, days: null, unknown: true };
-            
-        } catch (error) {
-            console.log(`⚠️ 无法检查 @${username} 的活跃状态`);
-            return { inactive: false, days: null, error: true };
-        }
-    }
-
-    // 执行取关操作
-    async function unfollowUser(button, username, days) {
-        try {
-            button.click();
-            await randomDelay(500, 800);
-
-            // 查找确认按钮
-            const confirmButton = document.querySelector('[data-testid="confirmationSheetConfirm"]') ||
-                                  document.querySelector('[data-testid="unfollowConfirm"]');
-            
-            if (confirmButton) {
-                confirmButton.click();
+            if (confirmBtn) {
+                confirmBtn.click();
                 stats.unfollowed++;
-                const daysText = days ? `(${days}天未发推)` : '';
+                const daysText = days !== null ? `(${days}天未发推)` : '(从未发推)';
                 console.log(`✅ 已取关 #${stats.unfollowed}: @${username} ${daysText}`);
                 return true;
             } else {
+                console.log(`⚠️ 未找到确认按钮: @${username}`);
                 stats.failed++;
-                console.log(`❌ 取关失败 @${username}: 未找到确认按钮`);
                 return false;
             }
-        } catch (error) {
-            console.error(`❌ 取关失败 @${username}:`, error);
+            
+        } catch (e) {
+            console.error(`❌ 取关失败 @${username}: ${e.message}`);
             stats.failed++;
             return false;
         }
     }
 
-    // 查找所有用户卡片
-    function findUserCells() {
-        return Array.from(document.querySelectorAll('[data-testid="UserCell"]'));
-    }
-
     // 显示进度
     function showProgress() {
-        if (stats.total % 5 === 0) {
-            console.log(`\n📈 进度：已处理 ${stats.total} 人 | 取关: ${stats.unfollowed} | 跳过蓝勾: ${stats.skippedBlue} | 跳过活跃: ${stats.skippedActive} | 失败: ${stats.failed}`);
-        }
+        console.log(`\n📈 进度: 处理${stats.total} | 取关${stats.unfollowed} | 蓝勾${stats.skippedBlue} | 活跃${stats.skippedActive} | 无按钮${stats.noButton} | 失败${stats.failed}`);
     }
 
-    // 主执行流程
-    async function startUnfollowing() {
-        console.log(`🎯 开始处理，目标：最多取关 ${CONFIG.maxUnfollow} 个用户`);
-        console.log(`📝 条件：非蓝勾 + ${CONFIG.inactiveDays}天未发推\n`);
-
-        let consecutiveNoAction = 0;
-        const maxConsecutiveNoAction = 5;
-
-        while (stats.unfollowed < CONFIG.maxUnfollow && consecutiveNoAction < maxConsecutiveNoAction) {
-            // 获取所有用户卡片
-            const userCells = findUserCells();
-
+    // 主程序
+    async function start() {
+        console.log(`🎯 配置: 最大${CONFIG.maxUnfollow}人 | ${CONFIG.inactiveDays}天未发推 | 延迟${CONFIG.delayMin}-${CONFIG.delayMax}ms\n`);
+        
+        // 先滚动几次加载用户
+        console.log('📜 预加载用户...');
+        for (let i = 0; i < 3; i++) {
+            await scrollToLoadMore();
+        }
+        
+        let scrollCount = 0;
+        let lastUserCount = 0;
+        let noNewUserCount = 0;
+        
+        while (stats.unfollowed < CONFIG.maxUnfollow && scrollCount < CONFIG.maxScrolls) {
+            // 获取当前所有用户卡片
+            const userCells = Array.from(document.querySelectorAll('[data-testid="UserCell"]'));
+            console.log(`\n📊 当前页面有 ${userCells.length} 个用户`);
+            
             if (userCells.length === 0) {
-                console.log('⚠️ 未找到用户卡片，滚动加载...');
-                await scrollToLoadMore();
-                consecutiveNoAction++;
-                continue;
+                console.log('❌ 未找到用户卡片，请确认在 https://twitter.com/following');
+                break;
             }
-
-            let actionTaken = false;
-
+            
+            // 检查是否有新用户
+            if (userCells.length === lastUserCount) {
+                noNewUserCount++;
+                if (noNewUserCount >= 2) {
+                    console.log('📜 尝试滚动加载更多...');
+                    const hasMore = await scrollToLoadMore();
+                    if (!hasMore) {
+                        console.log('✅ 已加载全部用户');
+                        break;
+                    }
+                    noNewUserCount = 0;
+                }
+            } else {
+                noNewUserCount = 0;
+            }
+            lastUserCount = userCells.length;
+            
+            // 处理每个用户
+            let processedInThisBatch = 0;
+            
             for (let cell of userCells) {
                 if (stats.unfollowed >= CONFIG.maxUnfollow) break;
-                
-                // 跳过已处理的
                 if (cell.dataset.processed) continue;
-                cell.dataset.processed = 'true';
                 
+                cell.dataset.processed = 'true';
                 stats.total++;
+                processedInThisBatch++;
+                
                 const username = getUsername(cell);
-
-                // 1. 检查是否有蓝勾
+                console.log(`\n[${stats.total}] @${username}`);
+                
+                // 1. 检查蓝勾
                 if (hasVerifiedBadge(cell)) {
                     stats.skippedBlue++;
-                    console.log(`⏭️ 跳过蓝勾用户: @${username}`);
-                    showProgress();
+                    console.log('   ⏭️ 跳过：蓝勾用户');
                     continue;
                 }
-
-                // 2. 检查是否60天未发推
-                const inactiveCheck = await isInactive(cell, username);
                 
-                if (!inactiveCheck.inactive && !inactiveCheck.unknown) {
+                // 2. 检查活跃度
+                const activity = await checkActivity(cell, username);
+                if (!activity.inactive && !activity.error) {
                     stats.skippedActive++;
-                    console.log(`⏭️ 跳过活跃用户: @${username} (${inactiveCheck.days}天前发推)`);
-                    showProgress();
+                    console.log(`   ⏭️ 跳过：活跃用户 (${activity.days}天前发推)`);
                     continue;
                 }
-
-                // 如果无法确定活跃状态，可以选择跳过或继续
-                if (inactiveCheck.unknown || inactiveCheck.error) {
-                    console.log(`⚠️ 无法确定 @${username} 的活跃状态，跳过`);
-                    showProgress();
-                    continue;
-                }
-
+                
                 // 3. 查找取关按钮
-                const unfollowButton = cell.querySelector('[data-testid$="-unfollow"]') ||
-                                      cell.querySelector('[data-testid="unfollow"]') ||
-                                      cell.querySelector('div[role="button"][aria-label*="Following"]');
-
-                if (unfollowButton) {
-                    await unfollowUser(unfollowButton, username, inactiveCheck.days);
-                    actionTaken = true;
+                const btn = findUnfollowButton(cell);
+                if (!btn) {
+                    stats.noButton++;
+                    console.log('   ⚠️ 未找到取关按钮');
+                    continue;
+                }
+                
+                // 4. 执行取关
+                await unfollowUser(btn, username, activity.days);
+                
+                // 延迟
+                await randomDelay(CONFIG.delayMin, CONFIG.delayMax);
+                
+                // 显示进度
+                if (stats.total % 5 === 0) {
                     showProgress();
-
-                    // 随机延迟
-                    await randomDelay(CONFIG.delayMin, CONFIG.delayMax);
-                } else {
-                    console.log(`⚠️ 未找到取关按钮: @${username}`);
                 }
             }
-
-            if (!actionTaken) {
-                consecutiveNoAction++;
-                console.log('📜 滚动加载更多用户...');
+            
+            console.log(`\n📜 本批次处理了 ${processedInThisBatch} 人`);
+            scrollCount++;
+            
+            // 滚动加载更多
+            if (stats.unfollowed < CONFIG.maxUnfollow) {
                 await scrollToLoadMore();
-            } else {
-                consecutiveNoAction = 0;
             }
         }
-
+        
         // 完成总结
-        console.log('\n================================');
+        console.log('\n' + '='.repeat(50));
         console.log('✅ 批量取关完成！');
-        console.log('================================');
+        console.log('='.repeat(50));
         console.log(`📊 统计：`);
         console.log(`   取关成功: ${stats.unfollowed} 人`);
         console.log(`   跳过蓝勾: ${stats.skippedBlue} 人`);
         console.log(`   跳过活跃: ${stats.skippedActive} 人`);
+        console.log(`   无取关按钮: ${stats.noButton} 人`);
         console.log(`   失败: ${stats.failed} 次`);
         console.log(`   总计处理: ${stats.total} 人`);
-        console.log('================================');
+        console.log('='.repeat(50));
     }
 
-    // 启动脚本
-    await startUnfollowing();
+    // 启动
+    await start();
 })();
