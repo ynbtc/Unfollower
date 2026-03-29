@@ -1,0 +1,26 @@
+{
+  "name": "unfollower",
+  "version": "1.0.0",
+  "description": "Twitter/X 批量取关工具 - 支持非蓝勾用户筛选、活跃度检查",
+  "main": "scripts/unfollower.js",
+  "scripts": {
+    "start": "node scripts/unfollower.js"
+  },
+  "keywords": [
+    "twitter",
+    "unfollow",
+    "automation",
+    "social-media",
+    "openclaw-skill"
+  ],
+  "author": "ynbtc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ynbtc/Unfollower"
+  },
+  "bugs": {
+    "url": "https://github.com/ynbtc/Unfollower/issues"
+  },
+  "homepage": "https://github.com/ynbtc/Unfollower#readme"
+}
