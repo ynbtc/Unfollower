@@ -10,6 +10,7 @@ Twitter/X 批量取关 Skill，支持筛选非蓝勾用户、活跃度检查、�
 - ✅ **智能延迟** - 随机延迟避免封号
 - ✅ **进度显示** - 实时显示处理进度
 - ✅ **安全可靠** - 浏览器控制台运行，无需 API
+- ✅ **油猴脚本** - 支持 Tampermonkey，无需手动粘贴代码
 
 ## 安装
 
@@ -31,7 +32,38 @@ cd Unfollower
 
 ## 使用方法
 
-### 浏览器控制台运行
+### ⭐ 推荐：Tampermonkey 油猴脚本（无需手动粘贴代码）
+
+#### 步骤一：安装 Tampermonkey 扩展
+
+- **Chrome**: [Chrome Web Store - Tampermonkey](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
+- **Firefox**: [Firefox Add-ons - Tampermonkey](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
+- **Edge**: [Edge Add-ons - Tampermonkey](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
+
+#### 步骤二：安装油猴脚本
+
+点击下方链接，Tampermonkey 将自动弹出安装界面，点击「安装」即可：
+
+> **[📦 点击安装油猴脚本](https://raw.githubusercontent.com/ynbtc/Unfollower/main/scripts/unfollower.user.js)**
+
+或者手动安装：
+1. 打开 Tampermonkey 扩展 → 管理面板 → 新建脚本
+2. 将 `scripts/unfollower.user.js` 的内容复制粘贴进去，保存
+
+#### 步骤三：使用
+
+1. 打开 `https://twitter.com/你的用户名/following` 或 `https://x.com/你的用户名/following`
+2. 页面右下角会出现浮动控制面板
+3. 在面板中调整配置（最大取关数、不活跃天数等）
+4. 点击「▶ 开始取关」按钮
+5. 实时查看统计数据和操作日志
+6. 随时点击「⏹ 停止」按钮暂停
+
+> 也可通过浏览器右上角的 Tampermonkey 图标 → 点击「开始批量取关」菜单命令启动。
+
+---
+
+### 备选：浏览器控制台运行
 
 1. 打开 Twitter/X，进入 `https://twitter.com/following`
 2. 按 `F12` 打开开发者工具
@@ -127,14 +159,15 @@ const CONFIG = {
 
 ```
 Unfollower/
-├── README.md           # 项目说明
-├── package.json        # 包信息
-├── SKILL.md            # OpenClaw Skill 文档
-├── LICENSE             # 许可证
+├── README.md                  # 项目说明
+├── package.json               # 包信息
+├── SKILL.md                   # OpenClaw Skill 文档
+├── LICENSE                    # 许可证
 ├── scripts/
-│   └── unfollower.js   # 主脚本
+│   ├── unfollower.js          # 控制台版脚本
+│   └── unfollower.user.js     # Tampermonkey 油猴脚本
 └── docs/
-    └── USAGE.md        # 详细使用文档
+    └── USAGE.md               # 详细使用文档
 ```
 
 ## 贡献

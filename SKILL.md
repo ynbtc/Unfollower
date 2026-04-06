@@ -1,7 +1,7 @@
 ---
 name: unfollower
 description: "Twitter/X 批量取关工具 - 支持非蓝勾用户筛选、活跃度检查、智能延迟。Use when user mentions: twitter unfollow, bulk unfollow, remove followers, clean following list, 取关, 批量取消关注. 关键词：twitter取关, 批量取关, 清理关注, unfollow, 取消关注, 蓝勾筛选."
-version: "1.0.0"
+version: "1.1.0"
 author: "ynbtc"
 license: "MIT"
 homepage: "https://github.com/ynbtc/Unfollower"
@@ -31,14 +31,24 @@ Twitter/X 批量取关工具，用于自动化清理关注列表。
 | 功能 | 说明 |
 |------|------|
 | 批量取关 | 自动处理大量关注者 |
-| 蓝勾筛选 | 自动跳过认证用户 |
+| 蓝勾筛选 | 自动跳过认证用户（精确选择器检测） |
 | 活跃度检查 | 支持按天数筛选不活跃用户 |
 | 智能延迟 | 随机延迟避免封号 |
 | 进度显示 | 实时显示处理进度 |
+| 油猴脚本 | Tampermonkey 自动运行，无需手动粘贴代码 |
+| 控制面板 | 页面内浮动 UI，支持开始/停止/配置 |
+| 智能滚动 | 连续无新增用户时自动停止 |
 
 ## 使用方法
 
-### 方式1：浏览器控制台（推荐）
+### 方式1：Tampermonkey 油猴脚本（推荐）
+
+1. 安装 Tampermonkey 浏览器扩展
+2. 安装 `scripts/unfollower.user.js` 脚本（从 GitHub raw 链接直接安装）
+3. 打开 `https://twitter.com/用户名/following`
+4. 页面右下角浮动面板 → 点击「▶ 开始取关」
+
+### 方式2：浏览器控制台
 
 ```javascript
 // 1. 打开 https://twitter.com/following
@@ -47,7 +57,7 @@ Twitter/X 批量取关工具，用于自动化清理关注列表。
 // 4. 按回车运行
 ```
 
-### 方式2：OpenClaw Agent 调用
+### 方式3：OpenClaw Agent 调用
 
 ```yaml
 # 在 OpenClaw 中调用
@@ -106,11 +116,20 @@ const CONFIG = {
 
 | 文件 | 用途 |
 |------|------|
-| `scripts/unfollower.js` | 主脚本文件 |
+| `scripts/unfollower.js` | 控制台版脚本 |
+| `scripts/unfollower.user.js` | Tampermonkey 油猴脚本 |
 | `README.md` | 项目文档 |
 | `SKILL.md` | OpenClaw Skill 定义 |
 
 ## 更新日志
+
+### v1.1.0 (2026-04-06)
+- ✨ 新增 Tampermonkey 油猴脚本 (`unfollower.user.js`)
+- ✅ 修复蓝勾检测误判（移除不可靠的 SVG 路径检测）
+- ✅ 修复取关按钮查找（新增 `data-testid$="-unfollow"` / `aria-label` 检测，移除样式匹配）
+- ✅ 修复确认弹窗处理（使用 MutationObserver + 重试机制 + alertdialog 检测）
+- ✅ 增大 maxScrolls 至 50，改为智能停止（连续无新增用户时停止）
+- ✅ 油猴脚本含浮动控制面板、实时统计、日志显示
 
 ### v1.0.0 (2026-03-29)
 - ✨ 初始版本发布

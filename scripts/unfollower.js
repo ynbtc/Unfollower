@@ -14,7 +14,8 @@
         delayMin: 2000,
         delayMax: 4000,
         scrollDelay: 2000,
-        maxScrolls: 5
+        maxScrolls: 50,             // 增大滚动次数上限
+        maxEmptyScrolls: 3          // 连续多少次无新增用户时停止
     };
 
     let stats = {
@@ -57,23 +58,14 @@
     function hasVerifiedBadge(userCell) {
         const indicators = [
             '[data-testid="icon-verified"]',
+            '[aria-label="Verified account"]',
+            '[aria-label="认证账户"]',
             'svg[aria-label*="Verified"]',
             'svg[aria-label*="认证"]'
         ];
         
         for (let selector of indicators) {
             if (userCell.querySelector(selector)) return true;
-        }
-        
-        // 检查 SVG 路径
-        const svgs = userCell.querySelectorAll('svg');
-        for (let svg of svgs) {
-            const path = svg.querySelector('path');
-            if (path) {
-                const d = path.getAttribute('d') || '';
-                // 蓝勾图标的路径特征
-                if (d.length > 100 && d.includes('M')) return true;
-            }
         }
         
         return false;
@@ -118,45 +110,33 @@
     function findUnfollowButton(userCell) {
         console.log('   🔍 查找取关按钮...');
         
-        // 方式1: 标准 data-testid
-        let btn = userCell.querySelector('[data-testid="unfollow"]');
+        // 方式1: 标准 data-testid（精确匹配或通配符匹配）
+        let btn = userCell.querySelector('[data-testid="unfollow"]') ||
+                  userCell.querySelector('[data-testid$="-unfollow"]') ||
+                  userCell.querySelector('[data-testid*="unfollow"]');
         if (btn) {
             console.log('   ✅ 找到按钮（方式1: data-testid）');
             return btn;
         }
         
-        // 方式2: 查找所有 role="button" 元素
-        const buttons = userCell.querySelectorAll('[role="button"]');
-        console.log(`   找到 ${buttons.length} 个按钮`);
+        // 方式2: aria-label 包含 "Following" 或 "Unfollow"
+        const allButtons = userCell.querySelectorAll('[role="button"]');
+        console.log(`   找到 ${allButtons.length} 个按钮`);
         
-        for (let btn of buttons) {
-            const text = (btn.textContent || '').toLowerCase();
+        for (let btn of allButtons) {
             const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-            
-            // 检查是否包含 "following" 或 "正在关注"
-            if (text.includes('following') || 
-                text.includes('正在关注') ||
-                ariaLabel.includes('following') ||
-                ariaLabel.includes('unfollow')) {
-                console.log(`   ✅ 找到按钮（方式2: 文本匹配）- 文本: "${btn.textContent?.substring(0, 20)}"`);
+            if (ariaLabel.includes('following') || ariaLabel.includes('unfollow')) {
+                console.log(`   ✅ 找到按钮（方式2: aria-label）- "${btn.getAttribute('aria-label')}"`);
                 return btn;
             }
         }
         
-        // 方式3: 查找 div 按钮（Twitter 常用）
-        const divButtons = userCell.querySelectorAll('div[role="button"]');
-        for (let btn of divButtons) {
-            // 检查样式（Twitter 的 Following 按钮通常有特定样式）
-            const style = window.getComputedStyle(btn);
-            const hasBorder = style.borderWidth !== '0px';
-            const hasBackground = style.backgroundColor !== 'rgba(0, 0, 0, 0)';
-            
-            if (hasBorder || hasBackground) {
-                const text = btn.textContent || '';
-                if (text.length < 20) {  // 按钮文本通常较短
-                    console.log(`   ✅ 找到按钮（方式3: 样式匹配）- 文本: "${text}"`);
-                    return btn;
-                }
+        // 方式3: 文本内容匹配（"Following" / "正在关注"）
+        for (let btn of allButtons) {
+            const text = (btn.textContent || '').trim().toLowerCase();
+            if (text === 'following' || text === '正在关注') {
+                console.log(`   ✅ 找到按钮（方式3: 文本匹配）- "${btn.textContent?.trim()}"`);
+                return btn;
             }
         }
         
@@ -164,36 +144,77 @@
         return null;
     }
 
+    // 等待确认弹窗出现（使用 MutationObserver）
+    function waitForConfirmDialog(timeoutMs = 3000) {
+        return new Promise((resolve) => {
+            const findConfirmBtn = () => {
+                // 优先检查 alertdialog 容器内的确认按钮
+                const dialog = document.querySelector('[role="alertdialog"]') ||
+                               document.querySelector('[data-testid="confirmationSheetDialog"]');
+                if (dialog) {
+                    const btn = dialog.querySelector('[data-testid="confirmationSheetConfirm"]') ||
+                                dialog.querySelector('[data-testid="unfollowConfirm"]');
+                    if (btn) return btn;
+                }
+                // 全局查找
+                return document.querySelector('[data-testid="confirmationSheetConfirm"]') ||
+                       document.querySelector('[data-testid="unfollowConfirm"]');
+            };
+
+            // 已存在直接返回
+            const existing = findConfirmBtn();
+            if (existing) { resolve(existing); return; }
+
+            const timer = setTimeout(() => {
+                observer.disconnect();
+                resolve(null);
+            }, timeoutMs);
+
+            const observer = new MutationObserver(() => {
+                const btn = findConfirmBtn();
+                if (btn) {
+                    clearTimeout(timer);
+                    observer.disconnect();
+                    resolve(btn);
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        });
+    }
+
     // 执行取关
     async function unfollowUser(button, username, days) {
         try {
             console.log('   🖱️  点击取关按钮...');
             button.click();
-            await randomDelay(1000, 1500);
+            await randomDelay(800, 1200);
             
-            // 查找确认按钮
-            console.log('   🔍 查找确认按钮...');
-            let confirmBtn = null;
+            // 等待确认弹窗（使用 MutationObserver，最多 3 秒）
+            console.log('   🔍 等待确认弹窗...');
+            let confirmBtn = await waitForConfirmDialog(3000);
             
-            // 等待确认按钮出现
-            for (let i = 0; i < 5; i++) {
-                confirmBtn = document.querySelector('[data-testid="confirmationSheetConfirm"]') ||
-                            document.querySelector('[data-testid="unfollowConfirm"]');
-                
-                if (!confirmBtn) {
-                    // 查找包含 Unfollow/取消关注 文本的按钮
-                    const buttons = document.querySelectorAll('[role="button"]');
-                    for (let btn of buttons) {
+            // 如果没找到，重试一次点击取关按钮
+            if (!confirmBtn) {
+                console.log('   🔄 未找到确认按钮，重试点击取关按钮...');
+                button.click();
+                await randomDelay(800, 1200);
+                confirmBtn = await waitForConfirmDialog(3000);
+            }
+            
+            // 降级：轮询查找包含 Unfollow/取消关注 文本的按钮
+            if (!confirmBtn) {
+                for (let i = 0; i < 5; i++) {
+                    const btns = document.querySelectorAll('[role="button"]');
+                    for (let btn of btns) {
                         const text = (btn.textContent || '').toLowerCase();
                         if (text.includes('unfollow') || text.includes('取消关注')) {
                             confirmBtn = btn;
                             break;
                         }
                     }
+                    if (confirmBtn) break;
+                    await randomDelay(400, 600);
                 }
-                
-                if (confirmBtn) break;
-                await randomDelay(500, 800);
             }
             
             if (confirmBtn) {
@@ -240,6 +261,7 @@
         }
         
         let scrollCount = 0;
+        let emptyScrollCount = 0;
         
         while (stats.unfollowed < CONFIG.maxUnfollow && scrollCount < CONFIG.maxScrolls) {
             const userCells = Array.from(document.querySelectorAll('[data-testid="UserCell"]'));
@@ -307,9 +329,15 @@
             
             if (stats.unfollowed < CONFIG.maxUnfollow) {
                 const hasMore = await scrollToLoadMore();
-                if (!hasMore && processed === 0) {
-                    console.log('✅ 已加载全部用户');
-                    break;
+                if (!hasMore) {
+                    emptyScrollCount++;
+                    console.log(`   ⚠️ 无新增用户（连续 ${emptyScrollCount} 次）`);
+                    if (emptyScrollCount >= CONFIG.maxEmptyScrolls) {
+                        console.log('✅ 已加载全部用户（智能停止）');
+                        break;
+                    }
+                } else {
+                    emptyScrollCount = 0;
                 }
             }
         }

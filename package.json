@@ -1,6 +1,6 @@
 {
   "name": "unfollower",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Twitter/X 批量取关工具 - 支持非蓝勾用户筛选、活跃度检查",
   "main": "scripts/unfollower.js",
   "scripts": {
